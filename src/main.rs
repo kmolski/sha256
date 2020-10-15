@@ -1,6 +1,10 @@
 use std::env::args;
+use std::fs::File;
 use std::mem::size_of;
 use std::num::Wrapping as Wrap;
+
+use memmap::Mmap;
+use rayon::prelude::*;
 
 // The following initialization data was taken from:
 // https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf (page 11 and 15)
@@ -94,9 +98,9 @@ fn test_string_hash_5() {
 }
 
 pub struct SHA256Context<'a> {
-    state: [u32; 8],
+    state: [u32; 8], // State vector (256 bits)
     data: &'a [u8],
-    data_len: usize,
+    data_len: usize, // Data length in bits
 }
 
 impl<'a> SHA256Context<'a> {
@@ -104,7 +108,7 @@ impl<'a> SHA256Context<'a> {
         SHA256Context {
             state: INIT_HASH_VALUES,
             data,
-            data_len: 0, // Data length in bits
+            data_len: 0,
         }
     }
 
@@ -136,7 +140,7 @@ impl<'a> SHA256Context<'a> {
             // Here, the padding includes: a single '1' bit and the first half of '0' bits.
             sha256_process_chunk(self, &end_chunk);
             // Then process a new chunk, which consists entirely of padding - the second half of
-            // '0' bits and the message length L (represented as a big-endian 64-bit unsigned int)
+            // '0' bits and the message length L (represented as a big-endian 64-bit unsigned int).
             end_chunk = [0; CHUNK_SIZE];
             end_chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
             sha256_process_chunk(self, &end_chunk);
@@ -202,7 +206,33 @@ pub fn sha256_process_chunk(ctx: &mut SHA256Context, chunk: &[u8]) {
 
 fn main() {
     let file_names: Vec<String> = args().skip(1).collect();
-    println!("{:?}", file_names);
-    let mut ctx: SHA256Context = SHA256Context::new("abc".as_bytes());
-    println!("{:X?}", ctx.hash());
+
+    file_names
+        .par_iter()
+        .map(|file_name| {
+            let file = match File::open(file_name) {
+                Ok(file) => file,
+                Err(e) => return Err(e),
+            };
+
+            let mmap = unsafe { Mmap::map(&file)? };
+
+            let mut ctx = SHA256Context::new(&mmap);
+            let hash = ctx.hash();
+
+            let mut hash_str = String::new();
+            for byte in hash.iter() {
+                hash_str.push_str(format!("{:02x}", byte).as_str());
+            }
+
+            Ok((hash_str, file_name))
+        })
+        .for_each(|result| match result {
+            Ok((hash_str, file_name)) => {
+                println!("{}  {}", hash_str, file_name);
+            }
+            Err(e) => {
+                eprintln!("ERROR: {}", e);
+            }
+        });
 }
