@@ -3,7 +3,6 @@ use std::fs::File;
 use std::mem::size_of;
 use std::num::Wrapping as Wrap;
 
-use memmap::Mmap;
 use rayon::prelude::*;
 
 // The following initialization data was taken from:
@@ -41,8 +40,8 @@ fn test_string_hash_1() {
         0x15, 0xAD,
     ];
 
-    let mut ctx = SHA256Context::new(msg.as_bytes());
-    assert!(ctx.hash() == hash);
+    let mut ctx = SHA256Context::new();
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -54,8 +53,8 @@ fn test_string_hash_2() {
         0x06, 0xC1,
     ];
 
-    let mut ctx = SHA256Context::new(msg.as_bytes());
-    assert!(ctx.hash() == hash);
+    let mut ctx = SHA256Context::new();
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -67,8 +66,8 @@ fn test_string_hash_3() {
         0x2C, 0xD0,
     ];
 
-    let mut ctx = SHA256Context::new(msg.as_bytes());
-    assert!(ctx.hash() == hash);
+    let mut ctx = SHA256Context::new();
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -80,8 +79,8 @@ fn test_string_hash_4() {
         0xB8, 0x55,
     ];
 
-    let mut ctx = SHA256Context::new(msg.as_bytes());
-    assert!(ctx.hash() == hash);
+    let mut ctx = SHA256Context::new();
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -93,30 +92,28 @@ fn test_string_hash_5() {
         0xE9, 0xD1,
     ];
 
-    let mut ctx = SHA256Context::new(msg.as_bytes());
-    assert!(ctx.hash() == hash);
+    let mut ctx = SHA256Context::new();
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
-pub struct SHA256Context<'a> {
+pub struct SHA256Context {
     state: [u32; 8], // State vector (256 bits)
-    data: &'a [u8],
     data_len: usize, // Data length in bits
 }
 
-impl<'a> SHA256Context<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
+impl SHA256Context {
+    pub fn new() -> Self {
         SHA256Context {
             state: INIT_HASH_VALUES,
-            data,
             data_len: 0,
         }
     }
 
     #[inline(never)]
-    pub fn hash(&mut self) -> [u8; HASH_SIZE] {
+    pub fn hash_bytes(&mut self, data: &[u8]) -> [u8; HASH_SIZE] {
         let mut end_chunk = [0_u8; CHUNK_SIZE];
 
-        for chunk in self.data.chunks(CHUNK_SIZE) {
+        for chunk in data.chunks(CHUNK_SIZE) {
             self.data_len += chunk.len() * 8;
             if chunk.len() == CHUNK_SIZE {
                 sha256_process_chunk(self, &chunk);
@@ -141,9 +138,60 @@ impl<'a> SHA256Context<'a> {
             sha256_process_chunk(self, &end_chunk);
             // Then process a new chunk, which consists entirely of padding - the second half of
             // '0' bits and the message length L (represented as a big-endian 64-bit unsigned int).
-            end_chunk = [0; CHUNK_SIZE];
+            end_chunk = [0_u8; CHUNK_SIZE];
             end_chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
             sha256_process_chunk(self, &end_chunk);
+        }
+
+        // Convert the state vector values from big-endian representation.
+        for i in 0..8 {
+            self.state[i] = u32::from_be(self.state[i]);
+        }
+
+        // Align the state vector of [u32; 8] to return type of [u8; HASH_SIZE=32].
+        let aligned = unsafe { self.state.align_to::<u8>().1 };
+        let mut ret = [0_u8; HASH_SIZE];
+        ret.copy_from_slice(aligned);
+        ret
+    }
+
+    pub fn hash_file(&mut self, file: File) -> [u8; HASH_SIZE] {
+        let mut chunk = [0_u8; CHUNK_SIZE];
+
+        use std::io::BufReader;
+        use std::io::Read;
+        let mut reader = BufReader::new(file);
+
+        while let Ok(bytes_read) = reader.read(&mut chunk[0..CHUNK_SIZE]) {
+            self.data_len += bytes_read * 8;
+            if bytes_read == CHUNK_SIZE {
+                sha256_process_chunk(self, &chunk);
+            } else {
+                for byte in chunk[bytes_read..CHUNK_SIZE].iter_mut() {
+                    *byte = 0_u8;
+                }
+                break;
+            }
+        }
+
+        let end_chunk_len = (self.data_len / 8) % CHUNK_SIZE;
+        chunk[end_chunk_len] = 0x80;
+
+        // After processing the chunks, the message must be padded with a single '1' bit, followed
+        // by K '0' bits and the message length L, such that (L + 1 + K + 64) % 256 == 0 is true.
+        if end_chunk_len < CHUNK_MINUS_U64 {
+            // In this case, the padding includes: a single '1' bit,  K '0' bits and
+            // the message length L (represented as a big-endian 64-bit unsigned int).
+            chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
+            sha256_process_chunk(self, &chunk);
+        } else {
+            // Here, the padding includes: a single '1' bit and the first half of '0' bits.
+            sha256_process_chunk(self, &chunk);
+            // Then process a new chunk, which consists entirely of padding - the second half of
+            // '0' bits and the message length L (represented as a big-endian 64-bit unsigned int).
+            chunk = [0_u8; CHUNK_SIZE];
+            chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
+            sha256_process_chunk(self, &chunk);
         }
 
         // Convert the state vector values from big-endian representation.
@@ -215,10 +263,8 @@ fn main() {
                 Err(e) => return Err(e),
             };
 
-            let mmap = unsafe { Mmap::map(&file)? };
-
-            let mut ctx = SHA256Context::new(&mmap);
-            let hash = ctx.hash();
+            let mut ctx = SHA256Context::new();
+            let hash = ctx.hash_file(file);
 
             let mut hash_str = String::new();
             for byte in hash.iter() {
