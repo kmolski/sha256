@@ -1,8 +1,13 @@
 use std::env::args;
+use std::error::Error;
+use std::fmt::Write;
 use std::fs::File;
+use std::io::BufReader;
+use std::io::Read;
 use std::mem::size_of;
 use std::num::Wrapping as Wrap;
 
+use gtk::prelude::*;
 use rayon::prelude::*;
 
 // The following initialization data was taken from:
@@ -109,7 +114,6 @@ impl SHA256Context {
         }
     }
 
-    #[inline(never)]
     pub fn hash_bytes(&mut self, data: &[u8]) -> [u8; HASH_SIZE] {
         let mut end_chunk = [0_u8; CHUNK_SIZE];
 
@@ -158,17 +162,15 @@ impl SHA256Context {
     pub fn hash_file(&mut self, file: File) -> [u8; HASH_SIZE] {
         let mut chunk = [0_u8; CHUNK_SIZE];
 
-        use std::io::BufReader;
-        use std::io::Read;
-        let mut reader = BufReader::new(file);
+        let mut reader = BufReader::with_capacity(CHUNK_SIZE * 1024, file);
 
         while let Ok(bytes_read) = reader.read(&mut chunk[0..CHUNK_SIZE]) {
             self.data_len += bytes_read * 8;
             if bytes_read == CHUNK_SIZE {
                 sha256_process_chunk(self, &chunk);
             } else {
-                for byte in chunk[bytes_read..CHUNK_SIZE].iter_mut() {
-                    *byte = 0_u8;
+                for i in bytes_read..CHUNK_SIZE {
+                    chunk[i] = 0_u8;
                 }
                 break;
             }
@@ -200,13 +202,11 @@ impl SHA256Context {
         }
 
         // Align the state vector of [u32; 8] to return type of [u8; HASH_SIZE=32].
-        let aligned = unsafe { self.state.align_to::<u8>().1 };
-        let mut ret = [0_u8; HASH_SIZE];
-        ret.copy_from_slice(aligned);
-        ret
+        unsafe { std::mem::transmute::<[u32; 8], [u8; HASH_SIZE]>(self.state) }
     }
 }
 
+#[inline(always)]
 pub fn sha256_process_chunk(ctx: &mut SHA256Context, chunk: &[u8]) {
     let mut w = [0_u32; 64];
 
@@ -252,33 +252,112 @@ pub fn sha256_process_chunk(ctx: &mut SHA256Context, chunk: &[u8]) {
     }
 }
 
-fn main() {
-    let file_names: Vec<String> = args().skip(1).collect();
-
+fn hash_files(file_names: Vec<String>) -> Vec<Result<(String, String), String>> {
     file_names
-        .par_iter()
+        .into_par_iter()
         .map(|file_name| {
-            let file = match File::open(file_name) {
-                Ok(file) => file,
-                Err(e) => return Err(e),
-            };
+            let file = File::open(&file_name).map_err(|err| err.to_string())?;
 
             let mut ctx = SHA256Context::new();
             let hash = ctx.hash_file(file);
 
             let mut hash_str = String::new();
-            for byte in hash.iter() {
-                hash_str.push_str(format!("{:02x}", byte).as_str());
+
+            for byte in &hash {
+                write!(hash_str, "{:02x}", byte).map_err(|err| err.to_string())?;
             }
 
             Ok((hash_str, file_name))
         })
-        .for_each(|result| match result {
-            Ok((hash_str, file_name)) => {
-                println!("{}  {}", hash_str, file_name);
+        .collect()
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    gtk::init()?;
+
+    let glade_src = include_str!("./interface.ui");
+    let builder = gtk::Builder::from_string(glade_src);
+
+    let main_window: gtk::ApplicationWindow = builder
+        .get_object("main_window")
+        .ok_or("main_window not found")?;
+
+    main_window.connect_destroy(|_| gtk::main_quit());
+    main_window.show_all();
+
+    let save_results_btn: gtk::Button = builder
+        .get_object::<gtk::Button>("save_results_btn")
+        .ok_or("save_results_btn not found")?;
+
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let window_ref1 = Rc::new(RefCell::new(main_window));
+
+    let window_ref2 = window_ref1.clone();
+
+    save_results_btn.connect_clicked(move |_| {
+        let main_window: &gtk::ApplicationWindow = &window_ref1.borrow();
+        let save_results_dialog = gtk::FileChooserDialog::with_buttons(
+            Some("Zapisz plik wynikowy"),
+            Some(main_window),
+            gtk::FileChooserAction::Save,
+            &[
+                ("Anuluj", gtk::ResponseType::Cancel),
+                ("Zapisz", gtk::ResponseType::Accept),
+            ],
+        );
+
+        save_results_dialog.set_do_overwrite_confirmation(true);
+
+        let response = save_results_dialog.run();
+        println!("{:?}", response);
+
+        match response {
+            gtk::ResponseType::Accept => {
+                let filename = save_results_dialog.get_filename();
+                println!("Saving to file {:?}!", filename);
             }
-            Err(e) => {
-                eprintln!("ERROR: {}", e);
+            _ => {
+                println!("Quitting!");
             }
+        }
+
+        save_results_dialog.close();
+    });
+
+    builder
+        .get_object::<gtk::Button>("add_files_btn")
+        .ok_or("add_files_btn not found")?
+        .connect_clicked(move |_| {
+            let main_window: &gtk::ApplicationWindow = &window_ref2.borrow();
+            let add_files_dialog = gtk::FileChooserDialog::with_buttons(
+                Some("Dodaj pliki"),
+                Some(main_window),
+                gtk::FileChooserAction::Open,
+                &[
+                    ("Anuluj", gtk::ResponseType::Cancel),
+                    ("Dodaj", gtk::ResponseType::Accept),
+                ],
+            );
+
+            add_files_dialog.set_select_multiple(true);
+
+            let response = add_files_dialog.run();
+            println!("{:?}", response);
+
+            match response {
+                gtk::ResponseType::Accept => {
+                    let filenames = add_files_dialog.get_filenames();
+                    println!("Opening {:?}!", filenames);
+                }
+                _ => {
+                    println!("Quitting!");
+                }
+            }
+
+            add_files_dialog.close();
         });
+
+    gtk::main();
+    Ok(())
 }
