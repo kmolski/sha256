@@ -127,6 +127,29 @@ impl SHA256Context {
             }
         }
 
+        self.finalize(end_chunk)
+    }
+
+    pub fn hash_file(&mut self, file: File) -> [u8; HASH_SIZE] {
+        let mut chunk = [0_u8; CHUNK_SIZE];
+        let mut reader = BufReader::with_capacity(CHUNK_SIZE * 1024, file);
+
+        while let Ok(bytes_read) = reader.read(&mut chunk[0..CHUNK_SIZE]) {
+            self.data_len += bytes_read * 8;
+            if bytes_read == CHUNK_SIZE {
+                sha256_process_chunk(self, &chunk);
+            } else {
+                for i in bytes_read..CHUNK_SIZE {
+                    chunk[i] = 0_u8;
+                }
+                break;
+            }
+        }
+
+        self.finalize(chunk)
+    }
+
+    pub fn finalize(&mut self, mut end_chunk: [u8; CHUNK_SIZE]) -> [u8; HASH_SIZE] {
         let end_chunk_len = (self.data_len / 8) % CHUNK_SIZE;
         end_chunk[end_chunk_len] = 0x80;
 
@@ -145,55 +168,6 @@ impl SHA256Context {
             end_chunk = [0_u8; CHUNK_SIZE];
             end_chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
             sha256_process_chunk(self, &end_chunk);
-        }
-
-        // Convert the state vector values from big-endian representation.
-        for i in 0..8 {
-            self.state[i] = u32::from_be(self.state[i]);
-        }
-
-        // Align the state vector of [u32; 8] to return type of [u8; HASH_SIZE=32].
-        let aligned = unsafe { self.state.align_to::<u8>().1 };
-        let mut ret = [0_u8; HASH_SIZE];
-        ret.copy_from_slice(aligned);
-        ret
-    }
-
-    pub fn hash_file(&mut self, file: File) -> [u8; HASH_SIZE] {
-        let mut chunk = [0_u8; CHUNK_SIZE];
-
-        let mut reader = BufReader::with_capacity(CHUNK_SIZE * 1024, file);
-
-        while let Ok(bytes_read) = reader.read(&mut chunk[0..CHUNK_SIZE]) {
-            self.data_len += bytes_read * 8;
-            if bytes_read == CHUNK_SIZE {
-                sha256_process_chunk(self, &chunk);
-            } else {
-                for i in bytes_read..CHUNK_SIZE {
-                    chunk[i] = 0_u8;
-                }
-                break;
-            }
-        }
-
-        let end_chunk_len = (self.data_len / 8) % CHUNK_SIZE;
-        chunk[end_chunk_len] = 0x80;
-
-        // After processing the chunks, the message must be padded with a single '1' bit, followed
-        // by K '0' bits and the message length L, such that (L + 1 + K + 64) % 256 == 0 is true.
-        if end_chunk_len < CHUNK_MINUS_U64 {
-            // In this case, the padding includes: a single '1' bit,  K '0' bits and
-            // the message length L (represented as a big-endian 64-bit unsigned int).
-            chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
-            sha256_process_chunk(self, &chunk);
-        } else {
-            // Here, the padding includes: a single '1' bit and the first half of '0' bits.
-            sha256_process_chunk(self, &chunk);
-            // Then process a new chunk, which consists entirely of padding - the second half of
-            // '0' bits and the message length L (represented as a big-endian 64-bit unsigned int).
-            chunk = [0_u8; CHUNK_SIZE];
-            chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
-            sha256_process_chunk(self, &chunk);
         }
 
         // Convert the state vector values from big-endian representation.
