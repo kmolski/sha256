@@ -1,0 +1,12 @@
+#!/bin/sh
+
+TEST_DATA_DIR=$1
+mkdir $TEST_DATA_DIR
+
+pushd $TEST_DATA_DIR
+
+for i in $(seq 1 64); do
+    dd if=/dev/urandom of=file$i bs=1M count=16
+done
+
+popd
