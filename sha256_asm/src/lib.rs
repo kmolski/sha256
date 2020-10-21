@@ -1,8 +1,8 @@
 extern "C" {
-    fn asm() -> usize;
+    pub fn sha256_asm(temp: *mut u32, w: *const u32);
 }
 
-#[test]
-fn test_asm() {
-    assert!(1 == unsafe { asm() });
+#[no_mangle]
+pub fn sha256_rounds_asm(temp: *mut u32, w: *const u32) {
+    unsafe { sha256_asm(temp, w) };
 }

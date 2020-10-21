@@ -119,7 +119,7 @@ impl SHA256Context {
         for chunk in data.chunks(CHUNK_SIZE) {
             self.data_len += chunk.len() * 8;
             if chunk.len() == CHUNK_SIZE {
-                sha256_process_chunk(self, &chunk);
+                self.process_chunk(&chunk);
             } else {
                 assert!(chunk.len() < CHUNK_SIZE);
                 end_chunk[0..chunk.len()].copy_from_slice(chunk);
@@ -136,7 +136,7 @@ impl SHA256Context {
         while let Ok(bytes_read) = reader.read(&mut chunk[0..CHUNK_SIZE]) {
             self.data_len += bytes_read * 8;
             if bytes_read == CHUNK_SIZE {
-                sha256_process_chunk(self, &chunk);
+                self.process_chunk(&chunk);
             } else {
                 for i in bytes_read..CHUNK_SIZE {
                     chunk[i] = 0_u8;
@@ -146,6 +146,41 @@ impl SHA256Context {
         }
 
         self.finalize(chunk)
+    }
+
+    #[inline(always)]
+    pub fn process_chunk(&mut self, chunk: &[u8]) {
+        let mut w = [0_u32; 64];
+
+        // Align the chunk of [u8; CHUNK_SIZE=64] to array of [u32; 16].
+        let mut bytes = [0_u8; 4];
+        assert!(chunk.len() == 64);
+        for i in 0..16 {
+            bytes[0] = chunk[i * 4 + 0];
+            bytes[1] = chunk[i * 4 + 1];
+            bytes[2] = chunk[i * 4 + 2];
+            bytes[3] = chunk[i * 4 + 3];
+            w[i] = u32::from_ne_bytes(bytes).to_be();
+        }
+
+        // Fill the rest of the working array using the copied chunk.
+        for i in 16..64 {
+            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+            let new = Wrap(w[i - 16]) + Wrap(s0) + Wrap(w[i - 7]) + Wrap(s1);
+            w[i] = new.0;
+        }
+
+        let mut temp = self.state;
+
+        // TODO: Add comment
+        unsafe {
+            (self.rounds_fn)((&mut temp).as_mut_ptr(), (&w).as_ptr());
+        }
+
+        for i in 0..8 {
+            self.state[i] = (Wrap(self.state[i]) + Wrap(temp[i])).0;
+        }
     }
 
     pub fn finalize(&mut self, mut end_chunk: [u8; CHUNK_SIZE]) -> [u8; HASH_SIZE] {
@@ -158,15 +193,15 @@ impl SHA256Context {
             // In this case, the padding includes: a single '1' bit,  K '0' bits and
             // the message length L (represented as a big-endian 64-bit unsigned int).
             end_chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
-            sha256_process_chunk(self, &end_chunk);
+            self.process_chunk(&end_chunk);
         } else {
             // Here, the padding includes: a single '1' bit and the first half of '0' bits.
-            sha256_process_chunk(self, &end_chunk);
+            self.process_chunk(&end_chunk);
             // Then process a new chunk, which consists entirely of padding - the second half of
             // '0' bits and the message length L (represented as a big-endian 64-bit unsigned int).
             end_chunk = [0_u8; CHUNK_SIZE];
             end_chunk[CHUNK_MINUS_U64..CHUNK_SIZE].copy_from_slice(&self.data_len.to_be_bytes());
-            sha256_process_chunk(self, &end_chunk);
+            self.process_chunk(&end_chunk);
         }
 
         // Convert the state vector values from big-endian representation.
@@ -176,51 +211,5 @@ impl SHA256Context {
 
         // Align the state vector of [u32; 8] to return type of [u8; HASH_SIZE=32].
         unsafe { std::mem::transmute::<[u32; 8], [u8; HASH_SIZE]>(self.state) }
-    }
-}
-
-#[inline(always)]
-pub fn sha256_process_chunk(ctx: &mut SHA256Context, chunk: &[u8]) {
-    let mut w = [0_u32; 64];
-
-    // Align the chunk of [u8; CHUNK_SIZE=64] to array of [u32; 16].
-    let aligned = unsafe { chunk.align_to::<u32>().1 };
-    assert!(aligned.len() == 16);
-    for i in 0..16 {
-        w[i] = u32::to_be(aligned[i]);
-    }
-
-    // Fill the rest of the working array using the copied chunk.
-    for i in 16..64 {
-        let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-        let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-        let new = Wrap(w[i - 16]) + Wrap(s0) + Wrap(w[i - 7]) + Wrap(s1);
-        w[i] = new.0;
-    }
-
-    let mut temp = ctx.state;
-
-    for i in 0..64 {
-        let s1 = temp[4].rotate_right(6) ^ temp[4].rotate_right(11) ^ temp[4].rotate_right(25);
-        let ch = (temp[4] & temp[5]) ^ (!temp[4] & temp[6]);
-        let temp1 = Wrap(temp[7]) + Wrap(s1) + Wrap(ch) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]);
-        let s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22);
-        let maj = (temp[0] & temp[1]) ^ (temp[0] & temp[2]) ^ (temp[1] & temp[2]);
-        let temp2 = Wrap(s0) + Wrap(maj);
-
-        // TODO: this can be rewritten into rotation + assignment
-        // temp.rotate_left(1); temp[4] = (Wrap(temp[4]) + temp1).0; temp[0] = (temp1 + temp2).0
-        temp[7] = temp[6];
-        temp[6] = temp[5];
-        temp[5] = temp[4];
-        temp[4] = (Wrap(temp[3]) + temp1).0;
-        temp[3] = temp[2];
-        temp[2] = temp[1];
-        temp[1] = temp[0];
-        temp[0] = (temp1 + temp2).0;
-    }
-
-    for i in 0..8 {
-        ctx.state[i] = (Wrap(ctx.state[i]) + Wrap(temp[i])).0;
     }
 }
