@@ -17,7 +17,7 @@ fn hash_files(entries: Vec<(String, i32)>, tx: glib::Sender<HashResult>) {
     fn get_hash_result(file_name: String, index: i32) -> HashResult {
         let file = File::open(&file_name).map_err(|err| (err.to_string(), index))?;
 
-        let mut ctx = SHA256Context::new();
+        let mut ctx = SHA256Context::new(sha256_rounds_rust);
 
         let start = Instant::now();
         let hash = ctx.hash_file(file);

@@ -4,22 +4,16 @@ use std::io::Read;
 use std::mem::size_of;
 use std::num::Wrapping as Wrap;
 
+extern "C" {
+    pub fn sha256_rounds_asm(temp: *mut u32, w: *const u32);
+    pub fn sha256_rounds_rust(temp: *mut u32, w: *const u32);
+}
+
 // The following initialization data was taken from:
 // https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf (page 11 and 15)
 
 const INIT_HASH_VALUES: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
-];
-
-const ROUND_VALUES: [u32; 64] = [
-    0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5,
-    0xD807AA98, 0x12835B01, 0x243185BE, 0x550C7DC3, 0x72BE5D74, 0x80DEB1FE, 0x9BDC06A7, 0xC19BF174,
-    0xE49B69C1, 0xEFBE4786, 0x0FC19DC6, 0x240CA1CC, 0x2DE92C6F, 0x4A7484AA, 0x5CB0A9DC, 0x76F988DA,
-    0x983E5152, 0xA831C66D, 0xB00327C8, 0xBF597FC7, 0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967,
-    0x27B70A85, 0x2E1B2138, 0x4D2C6DFC, 0x53380D13, 0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85,
-    0xA2BFE8A1, 0xA81A664B, 0xC24B8B70, 0xC76C51A3, 0xD192E819, 0xD6990624, 0xF40E3585, 0x106AA070,
-    0x19A4C116, 0x1E376C08, 0x2748774C, 0x34B0BCB5, 0x391C0CB3, 0x4ED8AA4A, 0x5B9CCA4F, 0x682E6FF3,
-    0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7, 0xC67178F2,
 ];
 
 const CHUNK_SIZE: usize = 512 / 8;
@@ -39,7 +33,7 @@ fn test_string_hash_1() {
         0x15, 0xAD,
     ];
 
-    let mut ctx = SHA256Context::new();
+    let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
@@ -52,7 +46,7 @@ fn test_string_hash_2() {
         0x06, 0xC1,
     ];
 
-    let mut ctx = SHA256Context::new();
+    let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
@@ -65,7 +59,7 @@ fn test_string_hash_3() {
         0x2C, 0xD0,
     ];
 
-    let mut ctx = SHA256Context::new();
+    let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
@@ -78,8 +72,14 @@ fn test_string_hash_4() {
         0xB8, 0x55,
     ];
 
-    let mut ctx = SHA256Context::new();
-    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+    let mut ctx = SHA256Context::new(sha256_rounds_rust);
+    let hash1 = ctx.hash_bytes(msg.as_bytes());
+    assert!(hash1 == hash);
+
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    let hash2 = ctx.hash_bytes(msg.as_bytes());
+    println!("{:x?} {:x?} {:x?}", hash, hash1, hash2);
+    assert!(hash2 == hash);
 }
 
 #[test]
@@ -91,21 +91,25 @@ fn test_string_hash_5() {
         0xE9, 0xD1,
     ];
 
-    let mut ctx = SHA256Context::new();
+    let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
+
+type RoundsFn = unsafe extern "C" fn(*mut u32, *const u32);
 
 #[repr(C)]
 pub struct SHA256Context {
     state: [u32; 8], // State vector (256 bits)
     data_len: usize, // Data length in bits
+    rounds_fn: RoundsFn,
 }
 
 impl SHA256Context {
-    pub fn new() -> Self {
+    pub fn new(rounds_fn: RoundsFn) -> Self {
         SHA256Context {
             state: INIT_HASH_VALUES,
             data_len: 0,
+            rounds_fn,
         }
     }
 
