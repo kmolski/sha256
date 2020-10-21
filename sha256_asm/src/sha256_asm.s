@@ -19,7 +19,7 @@ loop:
     rorx r9d, r8d, 13
     xor eax, r9d
     # eax = temp[0].rotate_right(2) ^ temp[0].rotate_right(13)
-    rorx r10d, r9d, 22
+    rorx r10d, r8d, 22
     xor eax, r10d
     # eax  = s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22)
     mov r11d, eax

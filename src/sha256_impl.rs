@@ -35,6 +35,9 @@ fn test_string_hash_1() {
 
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -47,6 +50,9 @@ fn test_string_hash_2() {
     ];
 
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
@@ -61,6 +67,9 @@ fn test_string_hash_3() {
 
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -73,13 +82,10 @@ fn test_string_hash_4() {
     ];
 
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
-    let hash1 = ctx.hash_bytes(msg.as_bytes());
-    assert!(hash1 == hash);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 
     let mut ctx = SHA256Context::new(sha256_rounds_asm);
-    let hash2 = ctx.hash_bytes(msg.as_bytes());
-    println!("{:x?} {:x?} {:x?}", hash, hash1, hash2);
-    assert!(hash2 == hash);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -92,6 +98,9 @@ fn test_string_hash_5() {
     ];
 
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
