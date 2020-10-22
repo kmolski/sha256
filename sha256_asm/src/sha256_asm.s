@@ -80,7 +80,7 @@ loop:
     xor r9d, r11d
     # r9d = (temp[4] & temp[5]) ^ (!temp[4] & temp[6])
     add eax, r9d
-    # eax = temp1 = Wrap(temp[7]) + Wrap(s1) + Wrap(ch) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]);
+    # eax = temp1 = Wrap(temp[7]) + Wrap(s1) + Wrap(ch) + Wrap(ROUND_VALUES[i]) + Wrap(w[i])
 
     mov r15d, dword ptr [rdi + 28]
     mov r14d, dword ptr [rdi + 24]
@@ -130,10 +130,10 @@ loop:
     pop r15
     ret
 
-    .data
+    .section .rodata
 
     # The following round constants were taken from:
-    # https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf (page 11 and 15)
+    # https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf (page 11)
 .align 64
 ROUND_VALUES:
     .long 0x428A2F98,0x71374491,0xB5C0FBCF,0xE9B5DBA5,0x3956C25B,0x59F111F1,0x923F82A4,0xAB1C5ED5
