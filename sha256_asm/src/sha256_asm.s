@@ -10,6 +10,8 @@ sha256_asm:
     push r13
     push r12
     mov rcx, 0
+    lea rdx, [rip + INDEX_VECTOR]
+    vmovdqa ymm1, [rdx]
 loop:   
     # let s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22)
     mov r8d, dword ptr [rdi + 0]
@@ -79,6 +81,7 @@ loop:
     add eax, r9d
     # eax = temp1 = Wrap(temp[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1) + Wrap(ch)
 
+    # temp.rotate_left(1)
     mov r15d, dword ptr [rdi + 28]
     mov r14d, dword ptr [rdi + 24]
     mov r13d, dword ptr [rdi + 20]
@@ -87,6 +90,7 @@ loop:
     mov r10d, dword ptr [rdi +  8]
     mov r9d,  dword ptr [rdi +  4]
     mov r8d,  dword ptr [rdi +  0]
+    # r15d..r8d = temp[7..0]
 
     mov dword ptr [rdi + 28], r14d
     mov dword ptr [rdi + 24], r13d
@@ -96,28 +100,17 @@ loop:
     mov dword ptr [rdi +  8], r9d
     mov dword ptr [rdi +  4], r8d
     mov dword ptr [rdi +  0], r15d
+    # temp[7..1] = r14d..r8d = temp[6..0], temp[0] = r15d = temp[7]
+
+    # This is actually slower? (~8000ms vs ~5500ms on 700M file)
+    # vpermd ymm0, ymm1, [rdi]
+    # ymm0 = temp.rotate_left(1)
+    # vmovdqu [rdi], ymm0
+    # temp = ymm0 = temp.rotate_left(1)
 
     add dword ptr [rdi +  0], eax
     add dword ptr [rdi + 16], eax
 
-    # temp[7] = temp[6]
-    # temp[6] = temp[5]
-    # temp[5] = temp[4]
-    # temp[4] = (Wrap(temp[3]) + temp1).0
-    # temp[3] = temp[2]
-    # temp[2] = temp[1]
-    # temp[1] = temp[0]
-    # temp[0] = (temp1 + temp2).0
-
-    # mov ymm2, [rdi + 0]
-    # # ymm2 = temp
-    # vpermd ymm0, ymm1, ymm2
-    # # ymm0 = temp.rotate_left(1)
-    # 
-    # xor ymm2, ymm2
-    # mov xmm1, eax
-    
-    # mov [rdi + 0], ymm0
     inc rcx
     cmp rcx, 64
     jne loop
@@ -141,3 +134,7 @@ ROUND_VALUES:
     .long 0xA2BFE8A1,0xA81A664B,0xC24B8B70,0xC76C51A3,0xD192E819,0xD6990624,0xF40E3585,0x106AA070
     .long 0x19A4C116,0x1E376C08,0x2748774C,0x34B0BCB5,0x391C0CB3,0x4ED8AA4A,0x5B9CCA4F,0x682E6FF3
     .long 0x748F82EE,0x78A5636F,0x84C87814,0x8CC70208,0x90BEFFFA,0xA4506CEB,0xBEF9A3F7,0xC67178F2
+
+.balign 32
+INDEX_VECTOR:
+    .long 7,0,1,2,3,4,5,6
