@@ -2,7 +2,7 @@ use std::env;
 use std::process::Command;
 
 fn main() {
-    // Rebuild if src/sha256sum.s is changed.
+    // Rebuild if src/sha256_asm.s is changed.
     println!("cargo:rerun-if-changed=src/sha256_asm.s");
 
     let out_dir = env::var("OUT_DIR").unwrap();

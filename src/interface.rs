@@ -103,6 +103,7 @@ pub fn init_remove_files_btn(
     remove_files_btn.set_sensitive(false);
 
     let selection = file_view.get_selection();
+    selection.set_mode(gtk::SelectionMode::Multiple);
     selection.connect_changed(clone!(@strong remove_files_btn => move |selection| {
         let (rows, _) = selection.get_selected_rows();
         remove_files_btn.set_sensitive(rows.len() > 0);
@@ -120,13 +121,19 @@ pub fn init_remove_files_btn(
     Ok(remove_files_btn)
 }
 
-pub fn init_start_btn(builder: &gtk::Builder, file_list: &gtk::ListStore) -> Result<gtk::Button> {
+pub fn init_start_btn(
+    builder: &gtk::Builder,
+    use_asm_btn: &gtk::RadioButton,
+    thread_count_btn: &gtk::SpinButton,
+    file_list: &gtk::ListStore,
+) -> Result<gtk::Button> {
     let start_btn: gtk::Button = builder
         .get_object("start_btn")
         .ok_or("start_btn not found")?;
     // start_btn.set_sensitive(false);
 
-    start_btn.connect_clicked(clone!(@strong file_list => move |_| {
+    start_btn.connect_clicked(clone!(@strong file_list, @strong use_asm_btn,
+                                     @strong thread_count_btn => move |_| {
         let mut index_vector = Vec::new();
 
         let tree_iter = file_list.get_iter_first();
@@ -145,7 +152,8 @@ pub fn init_start_btn(builder: &gtk::Builder, file_list: &gtk::ListStore) -> Res
         }
 
         let (tx, rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
-        hash_files(index_vector, tx);
+        let num_threads = thread_count_btn.get_value_as_int() as usize;
+        hash_files(index_vector, tx, use_asm_btn.get_active(), num_threads);
 
         rx.attach(None, clone!(@strong file_list => move |hash_result| {
             match hash_result {
@@ -220,4 +228,17 @@ pub fn init_save_results_dialog(
     }));
 
     Ok(save_results_btn)
+}
+
+pub fn init_thread_count_btn(
+    builder: &gtk::Builder,
+    main_window: &gtk::ApplicationWindow,
+    file_list: &gtk::ListStore,
+) -> Result<gtk::SpinButton> {
+    let thread_count_btn: gtk::SpinButton = builder
+        .get_object("thread_count_btn")
+        .ok_or("thread_count_btn not found")?;
+
+    thread_count_btn.set_value(rayon::current_num_threads() as f64);
+    Ok(thread_count_btn)
 }
