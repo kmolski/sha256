@@ -182,7 +182,7 @@ impl SHA256Context {
 
         let mut temp = self.state;
 
-        // TODO: Add comment
+        // Execute main loop (64 rounds)
         unsafe {
             (self.rounds_fn)((&mut temp).as_mut_ptr(), (&w).as_ptr());
         }

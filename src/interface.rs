@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
+use std::time::Instant;
 
 use glib::clone;
 use gtk::prelude::*;
@@ -154,6 +155,7 @@ pub fn init_start_btn(
         let file_count = index_vector.len() as f64;
         progress_bar.set_fraction(0.0);
         progress_bar.set_text(Some("Obliczanie..."));
+        let start = Instant::now();
 
         let (tx, rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
         let num_threads = thread_count_btn.get_value_as_int() as usize;
@@ -178,7 +180,9 @@ pub fn init_start_btn(
             let prev_count = (progress_bar.get_fraction() * file_count).ceil().min(file_count);
             progress_bar.set_fraction((prev_count + 1.0) / file_count);
             if prev_count + 1.0 == file_count {
-                progress_bar.set_text(Some("Ukończono."));
+                let time = start.elapsed().as_millis() as u64;
+                let status_text = format!("Ukończono w {} ms.", time);
+                progress_bar.set_text(Some(&status_text));
             }
 
             glib::Continue(true)

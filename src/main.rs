@@ -1,3 +1,7 @@
+use std::fmt::Write;
+use std::fs::File;
+use std::time::Instant;
+
 use glib::clone;
 use gtk::prelude::*;
 
@@ -15,10 +19,6 @@ fn hash_files(
     use_asm: bool,
     num_threads: usize,
 ) {
-    use std::fmt::Write;
-    use std::fs::File;
-    use std::time::Instant;
-
     fn get_hash_result(file_name: String, index: i32, use_asm: bool) -> HashResult {
         let sha256_impl = if use_asm {
             sha256_rounds_asm
