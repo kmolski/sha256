@@ -62,7 +62,9 @@
                 <property name="rubber-banding">True</property>
                 <property name="enable-grid-lines">horizontal</property>
                 <child internal-child="selection">
-                  <object class="GtkTreeSelection"/>
+                  <object class="GtkTreeSelection">
+                    <property name="mode">multiple</property>
+                  </object>
                 </child>
                 <child>
                   <object class="GtkTreeViewColumn" id="file_name_col">

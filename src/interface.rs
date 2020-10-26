@@ -103,7 +103,6 @@ pub fn init_remove_files_btn(
     remove_files_btn.set_sensitive(false);
 
     let selection = file_view.get_selection();
-    selection.set_mode(gtk::SelectionMode::Multiple);
     selection.connect_changed(clone!(@strong remove_files_btn => move |selection| {
         let (rows, _) = selection.get_selected_rows();
         remove_files_btn.set_sensitive(rows.len() > 0);
@@ -125,6 +124,7 @@ pub fn init_start_btn(
     builder: &gtk::Builder,
     use_asm_btn: &gtk::RadioButton,
     thread_count_btn: &gtk::SpinButton,
+    progress_bar: &gtk::ProgressBar,
     file_list: &gtk::ListStore,
 ) -> Result<gtk::Button> {
     let start_btn: gtk::Button = builder
@@ -133,7 +133,7 @@ pub fn init_start_btn(
     // start_btn.set_sensitive(false);
 
     start_btn.connect_clicked(clone!(@strong file_list, @strong use_asm_btn,
-                                     @strong thread_count_btn => move |_| {
+                                     @strong thread_count_btn, @strong progress_bar => move |_| {
         let mut index_vector = Vec::new();
 
         let tree_iter = file_list.get_iter_first();
@@ -151,11 +151,15 @@ pub fn init_start_btn(
             }
         }
 
+        let file_count = index_vector.len() as f64;
+        progress_bar.set_fraction(0.0);
+        progress_bar.set_text(Some("Obliczanie..."));
+
         let (tx, rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
         let num_threads = thread_count_btn.get_value_as_int() as usize;
         hash_files(index_vector, tx, use_asm_btn.get_active(), num_threads);
 
-        rx.attach(None, clone!(@strong file_list => move |hash_result| {
+        rx.attach(None, clone!(@strong file_list, @strong progress_bar => move |hash_result| {
             match hash_result {
                 Ok((hash_str, index, time)) => {
                     let path = gtk::TreePath::from_indicesv(&[index]);
@@ -169,6 +173,12 @@ pub fn init_start_btn(
 
                     file_list.set(&iter, &[1, 2], &[&e.as_str(), &"-".to_owned()]);
                 }
+            }
+
+            let prev_count = (progress_bar.get_fraction() * file_count).ceil().min(file_count);
+            progress_bar.set_fraction((prev_count + 1.0) / file_count);
+            if prev_count + 1.0 == file_count {
+                progress_bar.set_text(Some("Ukończono."));
             }
 
             glib::Continue(true)
@@ -230,11 +240,7 @@ pub fn init_save_results_dialog(
     Ok(save_results_btn)
 }
 
-pub fn init_thread_count_btn(
-    builder: &gtk::Builder,
-    main_window: &gtk::ApplicationWindow,
-    file_list: &gtk::ListStore,
-) -> Result<gtk::SpinButton> {
+pub fn init_thread_count_btn(builder: &gtk::Builder) -> Result<gtk::SpinButton> {
     let thread_count_btn: gtk::SpinButton = builder
         .get_object("thread_count_btn")
         .ok_or("thread_count_btn not found")?;

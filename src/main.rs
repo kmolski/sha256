@@ -76,13 +76,22 @@ fn main() -> Result<()> {
         .get_object("use_asm_btn")
         .ok_or("use_asm_btn not found")?;
 
-    let thread_count_btn = init_thread_count_btn(&builder, &main_window, &file_list)?;
+    let thread_count_btn = init_thread_count_btn(&builder)?;
+    let progress_bar: gtk::ProgressBar = builder
+        .get_object("progress_bar")
+        .ok_or("progress_bar not found")?;
 
     // let stop_signal = AtomicBool::new(false);
 
     let add_files_btn = init_add_files_dialog(&builder, &main_window, &file_list)?;
     let remove_files_btn = init_remove_files_btn(&builder, &file_view, &file_list)?;
-    let start_btn = init_start_btn(&builder, &use_asm_btn, &thread_count_btn, &file_list)?;
+    let start_btn = init_start_btn(
+        &builder,
+        &use_asm_btn,
+        &thread_count_btn,
+        &progress_bar,
+        &file_list,
+    )?;
     // let stop_btn = init_stop_btn(&builder, &stop_signal)?;
     let save_results_btn = init_save_results_dialog(&builder, &main_window, &file_list)?;
 
