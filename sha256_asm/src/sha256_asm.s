@@ -5,16 +5,20 @@
 .global sha256_asm
 sha256_asm:
     # arguments - rdi = temp: *mut u32, rsi = w: *const u32
-    push r15
-    push r14
-    push r13
-    push r12
     mov rcx, 0
+    vmovdqu ymm0, [rdi]
+    # ymm0 = temp
+    vpxor ymm2, ymm2, ymm2
+    # ymm2 = [0, 0, 0, 0, 0, 0, 0, 0]
     lea rdx, [rip + INDEX_VECTOR]
     vmovdqa ymm1, [rdx]
-loop:   
+    # ymm1 = INDEX_VECTOR
+loop:
+    vextracti128 xmm3, ymm0, 1
+    # xmm3 = temp[4..7]
+
     # let s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22)
-    mov r8d, dword ptr [rdi + 0]
+    vpextrd r8d, xmm0, 0
     # r8d = temp[0]
     rorx r11d, r8d, 2
     # r11d = temp[0].rotate_right(2)
@@ -26,8 +30,8 @@ loop:
     # r11d = s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22)
 
     # let maj = (temp[0] & temp[1]) ^ (temp[0] & temp[2]) ^ (temp[1] & temp[2])
-    mov r9d,  dword ptr [rdi + 4]
-    mov r10d, dword ptr [rdi + 8]
+    vpextrd r9d,  xmm0, 1
+    vpextrd r10d, xmm0, 2
     # r8d = temp[0], r9d = temp[1], r10d = temp[2]
     mov eax, r8d
     and eax, r9d
@@ -43,9 +47,9 @@ loop:
     # let temp2 = Wrap(s0) + Wrap(maj)
     add r11d, eax
     # r11d = temp2 = Wrap(s0) + Wrap(maj)
-    mov eax, dword ptr [rdi + 28]
-    mov dword ptr [rdi + 28], r11d
-    # eax = temp[7], temp[7] = temp2
+    vpextrd eax, xmm3, 3
+    vpinsrd xmm3, xmm3, r11d, 3
+    # eax = xmm3[3] = temp[7], xmm3[3] = temp[7] = temp2
 
     lea rdx, [rip + ROUND_VALUES]
     add eax, dword ptr [rdx + rcx * 4]
@@ -54,7 +58,7 @@ loop:
     # eax = Wrap(temp[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i])
     
     # let s1 = temp[4].rotate_right(6) ^ temp[4].rotate_right(11) ^ temp[4].rotate_right(25)
-    mov r10d, dword ptr [rdi + 16]
+    vpextrd r10d, xmm3, 0
     # r10d = temp[4]
     rorx r9d, r10d, 6
     # r9d = temp[4].rotate_right(6)
@@ -68,11 +72,11 @@ loop:
     # eax = Wrap(temp[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1)
     
     # let ch = (temp[4] & temp[5]) ^ (!temp[4] & temp[6])
-    mov r9d, dword ptr [rdi + 20]
+    vpextrd r9d, xmm3, 1
     # r9d = temp[5], r10d = temp[4]
     and r9d, r10d
     # r9d = (temp[4] & temp[5])
-    mov r11d, dword ptr [rdi + 24]
+    vpextrd r11d, xmm3, 2
     # r11d = temp[6], r10d = temp[4]
     andn r11d, r10d, r11d
     # r11d = (!temp[4] & temp[6])
@@ -81,43 +85,24 @@ loop:
     add eax, r9d
     # eax = temp1 = Wrap(temp[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1) + Wrap(ch)
 
-    # temp.rotate_left(1)
-    mov r15d, dword ptr [rdi + 28]
-    mov r14d, dword ptr [rdi + 24]
-    mov r13d, dword ptr [rdi + 20]
-    mov r12d, dword ptr [rdi + 16]
-    mov r11d, dword ptr [rdi + 12]
-    mov r10d, dword ptr [rdi +  8]
-    mov r9d,  dword ptr [rdi +  4]
-    mov r8d,  dword ptr [rdi +  0]
-    # r15d..r8d = temp[7..0]
+    vmovd xmm2, eax
+    # xmm2[0] = eax = temp1
+    vinserti128 ymm2, ymm2, xmm2, 1
+    # ymm2[0..3] = ymm2[4..7] = [temp1, 0, 0, 0]
 
-    mov dword ptr [rdi + 28], r14d
-    mov dword ptr [rdi + 24], r13d
-    mov dword ptr [rdi + 20], r12d
-    mov dword ptr [rdi + 16], r11d
-    mov dword ptr [rdi + 12], r10d
-    mov dword ptr [rdi +  8], r9d
-    mov dword ptr [rdi +  4], r8d
-    mov dword ptr [rdi +  0], r15d
-    # temp[7..1] = r14d..r8d = temp[6..0], temp[0] = r15d = temp[7]
-
-    # This is actually slower? (~8000ms vs ~5500ms on 700M file)
-    # vpermd ymm0, ymm1, [rdi]
+    vinserti128 ymm0, ymm0, xmm3, 1
+    # ymm0[4..7] = xmm3 = [temp[4], temp[5], temp[6], temp2]
+    vpermd ymm0, ymm1, ymm0
     # ymm0 = temp.rotate_left(1)
-    # vmovdqu [rdi], ymm0
-    # temp = ymm0 = temp.rotate_left(1)
-
-    add dword ptr [rdi +  0], eax
-    add dword ptr [rdi + 16], eax
+    vpaddd ymm0, ymm0, ymm2
+    # temp[0] = temp[0] + temp1, temp[4] = temp[4] + temp1
 
     inc rcx
     cmp rcx, 64
     jne loop
-    pop r12
-    pop r13
-    pop r14
-    pop r15
+    # end of loop
+    vmovdqu [rdi], ymm0
+    # temp = ymm0 = temp.rotate_left(1)
     ret
 
     .section .rodata
