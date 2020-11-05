@@ -15,27 +15,25 @@ const ROUND_VALUES: [u32; 64] = [
 ];
 
 #[no_mangle]
-pub extern "C" fn sha256_rounds_rust(temp: *mut u32, w: *const u32) {
-    let temp = unsafe { std::slice::from_raw_parts_mut(temp, 8) };
+pub extern "C" fn sha256_rounds_rust(state: *mut u32, w: *const u32) {
+    let state = unsafe { std::slice::from_raw_parts_mut(state, 8) };
     let w = unsafe { std::slice::from_raw_parts(w, 64) };
 
     for i in 0..64 {
-        let s1 = temp[4].rotate_right(6) ^ temp[4].rotate_right(11) ^ temp[4].rotate_right(25);
-        let ch = (temp[4] & temp[5]) ^ (!temp[4] & temp[6]);
-        let temp1 = Wrap(temp[7]) + Wrap(s1) + Wrap(ch) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]);
-        let s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22);
-        let maj = (temp[0] & temp[1]) ^ (temp[0] & temp[2]) ^ (temp[1] & temp[2]);
-        let temp2 = Wrap(s0) + Wrap(maj);
+        let s1 = state[4].rotate_right(6) ^ state[4].rotate_right(11) ^ state[4].rotate_right(25);
+        let choice = (state[4] & state[5]) ^ (!state[4] & state[6]);
+        let temp1 = Wrap(state[7]) + Wrap(s1) + Wrap(choice) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]);
+        let s0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22);
+        let majority = (state[0] & state[1]) ^ (state[0] & state[2]) ^ (state[1] & state[2]);
+        let temp2 = Wrap(s0) + Wrap(majority);
 
-        // TODO: this can be rewritten into rotation + assignment
-        // temp.rotate_left(1); temp[4] = (Wrap(temp[4]) + temp1).0; temp[0] = (temp1 + temp2).0
-        temp[7] = temp[6];
-        temp[6] = temp[5];
-        temp[5] = temp[4];
-        temp[4] = (Wrap(temp[3]) + temp1).0;
-        temp[3] = temp[2];
-        temp[2] = temp[1];
-        temp[1] = temp[0];
-        temp[0] = (temp1 + temp2).0;
+        state[7] = state[6];
+        state[6] = state[5];
+        state[5] = state[4];
+        state[4] = (Wrap(state[3]) + temp1).0;
+        state[3] = state[2];
+        state[2] = state[1];
+        state[1] = state[0];
+        state[0] = (temp1 + temp2).0;
     }
 }

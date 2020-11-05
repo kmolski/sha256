@@ -4,10 +4,11 @@
 
 .global sha256_asm
 sha256_asm:
-    # arguments - rdi = temp: *mut u32, rsi = w: *const u32
+    # arguments - rdi = state: *mut u32, rsi = w: *const u32
     mov rcx, 0
+    # rcx = i = 0
     vmovdqu ymm0, [rdi]
-    # ymm0 = temp
+    # ymm0 = state
     vpxor ymm2, ymm2, ymm2
     # ymm2 = [0, 0, 0, 0, 0, 0, 0, 0]
     lea rdx, [rip + INDEX_VECTOR]
@@ -15,94 +16,96 @@ sha256_asm:
     # ymm1 = INDEX_VECTOR
 loop:
     vextracti128 xmm3, ymm0, 1
-    # xmm3 = temp[4..7]
+    # xmm3 = state[4..7]
 
-    # let s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22)
+    # let s0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22)
     vpextrd r8d, xmm0, 0
-    # r8d = temp[0]
+    # r8d = state[0]
     rorx r11d, r8d, 2
-    # r11d = temp[0].rotate_right(2)
+    # r11d = state[0].rotate_right(2)
     rorx r9d, r8d, 13
     xor r11d, r9d
-    # r11d = temp[0].rotate_right(2) ^ temp[0].rotate_right(13)
+    # r11d = state[0].rotate_right(2) ^ state[0].rotate_right(13)
     rorx r10d, r8d, 22
     xor r11d, r10d
-    # r11d = s0 = temp[0].rotate_right(2) ^ temp[0].rotate_right(13) ^ temp[0].rotate_right(22)
+    # r11d = s0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22)
 
-    # let maj = (temp[0] & temp[1]) ^ (temp[0] & temp[2]) ^ (temp[1] & temp[2])
+    # let majority = (state[0] & state[1]) ^ (state[0] & state[2]) ^ (state[1] & state[2])
     vpextrd r9d,  xmm0, 1
     vpextrd r10d, xmm0, 2
-    # r8d = temp[0], r9d = temp[1], r10d = temp[2]
+    # r8d = state[0], r9d = state[1], r10d = state[2]
     mov eax, r8d
     and eax, r9d
-    # eax = (temp[0] & temp[1])
+    # eax = (state[0] & state[1])
     and r8d, r10d
-    # r8d = (temp[0] & temp[2])
+    # r8d = (state[0] & state[2])
     and r9d, r10d
-    # r9d = (temp[1] & temp[2])
+    # r9d = (state[1] & state[2])
     xor eax, r8d
     xor eax, r9d
-    # eax = maj = (temp[0] & temp[1]) ^ (temp[0] & temp[2]) ^ (temp[1] & temp[2])
+    # eax = majority = (state[0] & state[1]) ^ (state[0] & state[2]) ^ (state[1] & state[2])
 
-    # let temp2 = Wrap(s0) + Wrap(maj)
+    # let temp2 = Wrap(s0) + Wrap(majority)
     add r11d, eax
-    # r11d = temp2 = Wrap(s0) + Wrap(maj)
+    # r11d = temp2 = Wrap(s0) + Wrap(majority)
     vpextrd eax, xmm3, 3
     vpinsrd xmm3, xmm3, r11d, 3
-    # eax = xmm3[3] = temp[7], xmm3[3] = temp[7] = temp2
+    # eax = xmm3[3] = state[7], xmm3[3] = state[7] = temp2
 
     lea rdx, [rip + ROUND_VALUES]
     add eax, dword ptr [rdx + rcx * 4]
-    # eax = Wrap(temp[7]) + Wrap(ROUND_VALUES[i])
+    # eax = Wrap(state[7]) + Wrap(ROUND_VALUES[i])
     add eax, dword ptr [rsi + rcx * 4]
-    # eax = Wrap(temp[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i])
+    # eax = Wrap(state[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i])
     
-    # let s1 = temp[4].rotate_right(6) ^ temp[4].rotate_right(11) ^ temp[4].rotate_right(25)
+    # let s1 = state[4].rotate_right(6) ^ state[4].rotate_right(11) ^ state[4].rotate_right(25)
     vpextrd r10d, xmm3, 0
-    # r10d = temp[4]
+    # r10d = state[4]
     rorx r9d, r10d, 6
-    # r9d = temp[4].rotate_right(6)
+    # r9d = state[4].rotate_right(6)
     rorx r8d, r10d, 11
     xor r9d, r8d
-    # r9d = temp[4].rotate_right(6) ^ temp[4].rotate_right(11)
+    # r9d = state[4].rotate_right(6) ^ state[4].rotate_right(11)
     rorx r11d, r10d, 25
     xor r9d, r11d
-    # r9d = s1 = temp[4].rotate_right(6) ^ temp[4].rotate_right(11) ^ temp[4].rotate_right(25)
+    # r9d = s1 = state[4].rotate_right(6) ^ state[4].rotate_right(11) ^ state[4].rotate_right(25)
     add eax, r9d
-    # eax = Wrap(temp[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1)
+    # eax = Wrap(state[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1)
     
-    # let ch = (temp[4] & temp[5]) ^ (!temp[4] & temp[6])
+    # let choice = (state[4] & state[5]) ^ (!state[4] & state[6])
     vpextrd r9d, xmm3, 1
-    # r9d = temp[5], r10d = temp[4]
+    # r9d = state[5], r10d = state[4]
     and r9d, r10d
-    # r9d = (temp[4] & temp[5])
+    # r9d = (state[4] & state[5])
     vpextrd r11d, xmm3, 2
-    # r11d = temp[6], r10d = temp[4]
+    # r11d = state[6], r10d = state[4]
     andn r11d, r10d, r11d
-    # r11d = (!temp[4] & temp[6])
+    # r11d = (!state[4] & state[6])
     xor r9d, r11d
-    # r9d = ch = (temp[4] & temp[5]) ^ (!temp[4] & temp[6])
+    # r9d = choice = (state[4] & state[5]) ^ (!state[4] & state[6])
     add eax, r9d
-    # eax = temp1 = Wrap(temp[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1) + Wrap(ch)
+    # eax = temp1 = Wrap(state[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1) + Wrap(choice)
 
     vmovd xmm2, eax
     # xmm2[0] = eax = temp1
     vinserti128 ymm2, ymm2, xmm2, 1
-    # ymm2[0..3] = ymm2[4..7] = [temp1, 0, 0, 0]
+    # ymm2[4..7] = ymm2[0..3] = [temp1, 0, 0, 0]
 
     vinserti128 ymm0, ymm0, xmm3, 1
-    # ymm0[4..7] = xmm3 = [temp[4], temp[5], temp[6], temp2]
+    # ymm0[4..7] = xmm3 = [state[4], state[5], state[6], temp2]
     vpermd ymm0, ymm1, ymm0
-    # ymm0 = temp.rotate_left(1)
+    # ymm0 = state.rotate_left(1)
     vpaddd ymm0, ymm0, ymm2
-    # temp[0] = temp[0] + temp1, temp[4] = temp[4] + temp1
+    # state[0] = state[0] + temp1, state[4] = state[4] + temp1
 
     inc rcx
+    # rcx = ++i
     cmp rcx, 64
+    # i < 64?
     jne loop
     # end of loop
     vmovdqu [rdi], ymm0
-    # temp = ymm0 = temp.rotate_left(1)
+    # state = ymm0 = state.rotate_left(1)
     ret
 
     .section .rodata

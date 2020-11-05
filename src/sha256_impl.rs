@@ -5,8 +5,8 @@ use std::mem::size_of;
 use std::num::Wrapping as Wrap;
 
 extern "C" {
-    pub fn sha256_rounds_asm(temp: *mut u32, w: *const u32);
-    pub fn sha256_rounds_rust(temp: *mut u32, w: *const u32);
+    pub fn sha256_rounds_asm(state: *mut u32, w: *const u32);
+    pub fn sha256_rounds_rust(state: *mut u32, w: *const u32);
 }
 
 // The following initialization data was taken from:
