@@ -5,8 +5,16 @@ mkdir $TEST_DATA_DIR
 
 pushd $TEST_DATA_DIR
 
-for i in $(seq 1 64); do
-    dd if=/dev/urandom of=file$i bs=1M count=16
+for i in $(seq 1 512); do
+    dd if=/dev/urandom of=small$i bs=1M count=1
+done
+
+for i in $(seq 1 32); do
+    dd if=/dev/urandom of=medium$i bs=1M count=16
+done
+
+for i in $(seq 1 8); do
+    dd if=/dev/urandom of=large$i bs=1M count=1024
 done
 
 popd

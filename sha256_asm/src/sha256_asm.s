@@ -19,7 +19,7 @@ loop:
     # xmm3 = state[4..7]
 
     # let s0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22)
-    vpextrd r8d, xmm0, 0
+    vmovd r8d, xmm0
     # r8d = state[0]
     rorx r11d, r8d, 2
     # r11d = state[0].rotate_right(2)
@@ -59,7 +59,7 @@ loop:
     # eax = Wrap(state[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i])
     
     # let s1 = state[4].rotate_right(6) ^ state[4].rotate_right(11) ^ state[4].rotate_right(25)
-    vpextrd r10d, xmm3, 0
+    vmovd r10d, xmm3
     # r10d = state[4]
     rorx r9d, r10d, 6
     # r9d = state[4].rotate_right(6)
@@ -105,7 +105,7 @@ loop:
     jne loop
     # end of loop
     vmovdqu [rdi], ymm0
-    # state = ymm0 = state.rotate_left(1)
+    # state = ymm0
     ret
 
     .section .rodata
