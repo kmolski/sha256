@@ -1,7 +1,5 @@
 use std::env::args;
-use std::fmt::Write;
 use std::fs::File;
-use std::time::Instant;
 
 use rayon::iter::*;
 

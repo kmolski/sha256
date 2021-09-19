@@ -8,8 +8,6 @@ edition = "2018"
 
 [dependencies]
 rayon = "1.5.1"
-sha256_rust = { path = "./sha256_rust" }
-sha256_asm = { path = "./sha256_asm" }
 
 [profile.release]
-opt-level = 3
+debug = true
