@@ -67,6 +67,14 @@ pub fn sha256_rounds_rust(state: &mut [u32; 8], w: &[u32; 64]) {
     state.copy_from_slice(&[a, b, c, d, e, f, g, h]);
 }
 
+extern "C" {
+    pub fn sha256_asm(temp: *mut u32, w: *const u32);
+}
+
+pub fn sha256_rounds_asm(temp: &mut [u32; 8], w: &[u32; 64]) {
+    unsafe { sha256_asm(temp.as_mut_ptr(), w.as_ptr()) };
+}
+
 // The following testing data was taken from:
 // https://www.di-mgt.com.au/sha_testvectors.html
 // https://www.nist.gov/itl/ssd/software-quality-group/nsrl-test-data
@@ -83,8 +91,8 @@ fn test_string_hash_1() {
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 
-    // let mut ctx = SHA256Context::new(sha256_rounds_asm);
-    // assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -99,8 +107,8 @@ fn test_string_hash_2() {
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 
-    // let mut ctx = SHA256Context::new(sha256_rounds_asm);
-    // assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -115,8 +123,8 @@ fn test_string_hash_3() {
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 
-    // let mut ctx = SHA256Context::new(sha256_rounds_asm);
-    // assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -131,8 +139,8 @@ fn test_string_hash_4() {
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 
-    // let mut ctx = SHA256Context::new(sha256_rounds_asm);
-    // assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 #[test]
@@ -147,8 +155,8 @@ fn test_string_hash_5() {
     let mut ctx = SHA256Context::new(sha256_rounds_rust);
     assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 
-    // let mut ctx = SHA256Context::new(sha256_rounds_asm);
-    // assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
+    let mut ctx = SHA256Context::new(sha256_rounds_asm);
+    assert!(ctx.hash_bytes(msg.as_bytes()) == hash);
 }
 
 type RoundsFn = fn(&mut [u32; 8], &[u32; 64]);
@@ -227,9 +235,8 @@ impl SHA256Context {
             w[i] = new.0;
         }
 
-        let mut temp = self.state;
-
         // Execute main loop (64 rounds)
+        let mut temp = self.state;
         (self.rounds_fn)(&mut temp, w);
 
         for i in 0..8 {
