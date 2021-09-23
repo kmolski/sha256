@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Read;
@@ -43,37 +44,38 @@ macro_rules! sha256_round {
     };
 }
 
-macro_rules! sha256_eight_rounds {
-    ($a: ident, $b: ident, $c: ident, $d: ident, $e: ident, $f: ident, $g: ident, $h: ident, $w: ident, $i: expr) => {
-        sha256_round!($a, $b, $c, $d, $e, $f, $g, $h, $w, $i * 8 + 0);
-        sha256_round!($h, $a, $b, $c, $d, $e, $f, $g, $w, $i * 8 + 1);
-        sha256_round!($g, $h, $a, $b, $c, $d, $e, $f, $w, $i * 8 + 2);
-        sha256_round!($f, $g, $h, $a, $b, $c, $d, $e, $w, $i * 8 + 3);
-        sha256_round!($e, $f, $g, $h, $a, $b, $c, $d, $w, $i * 8 + 4);
-        sha256_round!($d, $e, $f, $g, $h, $a, $b, $c, $w, $i * 8 + 5);
-        sha256_round!($c, $d, $e, $f, $g, $h, $a, $b, $w, $i * 8 + 6);
-        sha256_round!($b, $c, $d, $e, $f, $g, $h, $a, $w, $i * 8 + 7);
-    };
-}
-
 pub fn sha256_rounds_rust(state: &mut [u32; 8], w: &[u32; 64]) {
     let (mut a, mut b, mut c, mut d) = (state[0], state[1], state[2], state[3]);
     let (mut e, mut f, mut g, mut h) = (state[4], state[5], state[6], state[7]);
 
     for i in 0..8 {
-        sha256_eight_rounds!(a, b, c, d, e, f, g, h, w, i);
+        sha256_round!(a, b, c, d, e, f, g, h, w, i * 8 + 0);
+        sha256_round!(h, a, b, c, d, e, f, g, w, i * 8 + 1);
+        sha256_round!(g, h, a, b, c, d, e, f, w, i * 8 + 2);
+        sha256_round!(f, g, h, a, b, c, d, e, w, i * 8 + 3);
+        sha256_round!(e, f, g, h, a, b, c, d, w, i * 8 + 4);
+        sha256_round!(d, e, f, g, h, a, b, c, w, i * 8 + 5);
+        sha256_round!(c, d, e, f, g, h, a, b, w, i * 8 + 6);
+        sha256_round!(b, c, d, e, f, g, h, a, w, i * 8 + 7);
     }
 
     state.copy_from_slice(&[a, b, c, d, e, f, g, h]);
 }
 
 extern "C" {
+    // pub fn sha256_avx2(temp: *mut u32, w: *const u32);
+    // pub fn sha256_bmi2(temp: *mut u32, w: *const u32);
     pub fn sha256_asm(temp: *mut u32, w: *const u32);
 }
 
 pub fn sha256_rounds_asm(temp: &mut [u32; 8], w: &[u32; 64]) {
     unsafe { sha256_asm(temp.as_mut_ptr(), w.as_ptr()) };
 }
+
+pub const SHA256_IMPLS: &[(&str, RoundsFn)] = &[
+    ("asm_avx2", sha256_rounds_asm as RoundsFn),
+    ("rust", sha256_rounds_rust as RoundsFn),
+];
 
 // The following testing data was taken from:
 // https://www.di-mgt.com.au/sha_testvectors.html
