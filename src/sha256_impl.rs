@@ -66,6 +66,7 @@ extern "C" {
     pub fn sha256_asm_avx2(temp: *mut u32, w: *const u32);
     // #[cfg(target_feature = "bmi2")]
     pub fn sha256_asm_bmi2(temp: *mut u32, w: *const u32);
+    pub fn sha256_asm(temp: *mut u32, w: *const u32);
 }
 
 // #[cfg(target_feature = "avx2")]
@@ -78,7 +79,12 @@ pub fn sha256_rounds_asm_bmi2(temp: &mut [u32; 8], w: &[u32; 64]) {
     unsafe { sha256_asm_bmi2(temp.as_mut_ptr(), w.as_ptr()) };
 }
 
+pub fn sha256_rounds_asm(temp: &mut [u32; 8], w: &[u32; 64]) {
+    unsafe { sha256_asm(temp.as_mut_ptr(), w.as_ptr()) };
+}
+
 pub const SHA256_IMPLS: &[(&str, RoundsFn)] = &[
+    ("asm", sha256_rounds_asm as RoundsFn),
     // #[cfg(target_feature = "avx2")]
     ("asm_avx2", sha256_rounds_asm_avx2 as RoundsFn),
     // #[cfg(target_feature = "bmi2")]

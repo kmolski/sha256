@@ -108,7 +108,7 @@ sha256_asm_avx2_loop_start:
     # state = ymm0
     ret
 
-.macro sha256_round a, b, c, d, e, f, g, h, i
+.macro sha256_bmi2_round a, b, c, d, e, f, g, h, i
     rorx eax, \e, 6
     rorx edx, \e, 11
     xor eax, edx
@@ -172,6 +172,107 @@ sha256_asm_bmi2:
     mov r14d, dword ptr [rdi + 24]
     mov r15d, dword ptr [rdi + 28]
 sha256_asm_bmi2_loop_start:
+    sha256_bmi2_round r8d,  r9d,  r10d, r11d, r12d, r13d, r14d, r15d, 0
+    sha256_bmi2_round r15d, r8d,  r9d,  r10d, r11d, r12d, r13d, r14d, 4
+    sha256_bmi2_round r14d, r15d, r8d,  r9d,  r10d, r11d, r12d, r13d, 8
+    sha256_bmi2_round r13d, r14d, r15d, r8d,  r9d,  r10d, r11d, r12d, 12
+    sha256_bmi2_round r12d, r13d, r14d, r15d, r8d,  r9d,  r10d, r11d, 16
+    sha256_bmi2_round r11d, r12d, r13d, r14d, r15d, r8d,  r9d,  r10d, 20
+    sha256_bmi2_round r10d, r11d, r12d, r13d, r14d, r15d, r8d,  r9d,  24
+    sha256_bmi2_round r9d,  r10d, r11d, r12d, r13d, r14d, r15d, r8d,  28
+
+    add rcx, 8
+    cmp rcx, 64
+    jne sha256_asm_bmi2_loop_start
+
+    mov dword ptr [rdi + 28], r15d
+    mov dword ptr [rdi + 24], r14d
+    mov dword ptr [rdi + 20], r13d
+    mov dword ptr [rdi + 16], r12d
+    mov dword ptr [rdi + 12], r11d
+    mov dword ptr [rdi + 8],  r10d
+    mov dword ptr [rdi + 4],  r9d
+    mov dword ptr [rdi + 0],  r8d
+
+    pop rbx
+    pop r12
+    pop r13
+    pop r14
+    pop r15
+    ret
+
+.macro sha256_round a, b, c, d, e, f, g, h, i
+    mov eax, \e
+    ror eax, 6
+    mov edx, \e
+    ror edx, 11
+    xor eax, edx
+    mov ebx, \e
+    ror ebx, 25
+    xor eax, ebx
+    # eax = sigma1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25)
+
+    mov ebx, \e
+    and ebx, \f
+    mov edx, \e
+    not edx
+    and edx, \g
+    xor ebx, edx
+    # ebx = choice = (e & f) ^ (g & !e)
+    add \h, eax
+    add \h, ebx
+    lea rdx, [rip + ROUND_VALUES]
+    add \h, dword ptr [rdx + rcx * 4 + \i]
+    add \h, dword ptr [rsi + rcx * 4 + \i]
+    # \h = temp1 = h + sigma1 + choice + ROUND_VALUES[i] + w[i]
+    add \d, \h
+    # d = d + temp1
+
+    mov eax, \a
+    ror eax, 2
+    mov edx, \a
+    ror edx, 13
+    xor eax, edx
+    mov ebx, \a
+    ror ebx, 22
+    xor eax, ebx
+    # eax = sigma0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22)
+    mov edx, \a
+    and edx, \b
+    # edx = a & b
+    mov ebx, \a
+    and ebx, \c
+    xor edx, ebx
+    # edx = (a & b) ^ (a & c)
+    mov ebx, \b
+    and ebx, \c
+    xor edx, ebx
+    # edx = majority = (a & b) ^ (a & c) ^ (b & c)
+    add eax, edx
+    # eax = temp2 = sigma0 + majority
+    add \h, eax
+    # h = temp1 + temp2
+.endm
+
+.global sha256_asm
+sha256_asm:
+    # arguments - rdi = state: *mut u32, rsi = w: *const u32
+    push r15
+    push r14
+    push r13
+    push r12
+    push rbx
+    mov rcx, 0
+
+    mov r8d,  dword ptr [rdi + 0]
+    mov r9d,  dword ptr [rdi + 4]
+    mov r10d, dword ptr [rdi + 8]
+    mov r11d, dword ptr [rdi + 12]
+    mov r12d, dword ptr [rdi + 16]
+    mov r13d, dword ptr [rdi + 20]
+    mov r14d, dword ptr [rdi + 24]
+    mov r15d, dword ptr [rdi + 28]
+sha256_asm_loop_start:
     sha256_round r8d,  r9d,  r10d, r11d, r12d, r13d, r14d, r15d, 0
     sha256_round r15d, r8d,  r9d,  r10d, r11d, r12d, r13d, r14d, 4
     sha256_round r14d, r15d, r8d,  r9d,  r10d, r11d, r12d, r13d, 8
@@ -183,7 +284,7 @@ sha256_asm_bmi2_loop_start:
 
     add rcx, 8
     cmp rcx, 64
-    jne sha256_asm_bmi2_loop_start
+    jne sha256_asm_loop_start
 
     mov dword ptr [rdi + 28], r15d
     mov dword ptr [rdi + 24], r14d
