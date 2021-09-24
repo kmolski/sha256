@@ -108,6 +108,51 @@ sha256_asm_avx2_loop_start:
     # state = ymm0
     ret
 
+.macro sha256_round a, b, c, d, e, f, g, h, i
+    rorx eax, \e, 6
+    rorx edx, \e, 11
+    xor eax, edx
+    rorx ebx, \e, 25
+    xor eax, ebx
+    # eax = sigma1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25)
+
+    mov ebx, \e
+    and ebx, \f
+    andn edx, \e, \g
+    xor ebx, edx
+    # ebx = choice = (e & f) ^ (g & !e)
+    add \h, eax
+    add \h, ebx
+    lea rdx, [rip + ROUND_VALUES]
+    add \h, dword ptr [rdx + rcx * 4 + \i]
+    add \h, dword ptr [rsi + rcx * 4 + \i]
+    # \h = temp1 = h + sigma1 + choice + ROUND_VALUES[i] + w[i]
+    add \d, \h
+    # d = d + temp1
+
+    rorx eax, \a, 2
+    rorx edx, \a, 13
+    xor eax, edx
+    rorx ebx, \a, 22
+    xor eax, ebx
+    # eax = sigma0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22)
+    mov edx, \a
+    and edx, \b
+    # edx = a & b
+    mov ebx, \a
+    and ebx, \c
+    xor edx, ebx
+    # edx = (a & b) ^ (a & c)
+    mov ebx, \b
+    and ebx, \c
+    xor edx, ebx
+    # edx = majority = (a & b) ^ (a & c) ^ (b & c)
+    add eax, edx
+    # eax = temp2 = sigma0 + majority
+    add \h, eax
+    # h = temp1 + temp2
+.endm
+
 .global sha256_asm_bmi2
 sha256_asm_bmi2:
     # arguments - rdi = state: *mut u32, rsi = w: *const u32
@@ -115,109 +160,41 @@ sha256_asm_bmi2:
     push r14
     push r13
     push r12
+    push rbx
     mov rcx, 0
-sha256_asm_bmi2_loop_start:
-    # let s0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22)
-    mov r8d, dword ptr [rdi + 0]
-    # r8d = state[0]
-    rorx r11d, r8d, 2
-    # r11d = state[0].rotate_right(2)
-    rorx r9d, r8d, 13
-    xor r11d, r9d
-    # r11d = state[0].rotate_right(2) ^ state[0].rotate_right(13)
-    rorx r10d, r8d, 22
-    xor r11d, r10d
-    # r11d = s0 = state[0].rotate_right(2) ^ state[0].rotate_right(13) ^ state[0].rotate_right(22)
 
-    # let maj = (state[0] & state[1]) ^ (state[0] & state[2]) ^ (state[1] & state[2])
+    mov r8d,  dword ptr [rdi + 0]
     mov r9d,  dword ptr [rdi + 4]
     mov r10d, dword ptr [rdi + 8]
-    # r8d = state[0], r9d = state[1], r10d = state[2]
-    mov eax, r8d
-    and eax, r9d
-    # eax = (state[0] & state[1])
-    and r8d, r10d
-    # r8d = (state[0] & state[2])
-    and r9d, r10d
-    # r9d = (state[1] & state[2])
-    xor eax, r8d
-    xor eax, r9d
-    # eax = maj = (state[0] & state[1]) ^ (state[0] & state[2]) ^ (state[1] & state[2])
-
-    # let temp2 = Wrap(s0) + Wrap(maj)
-    add r11d, eax
-    # r11d = temp2 = Wrap(s0) + Wrap(maj)
-    mov eax, dword ptr [rdi + 28]
-    mov dword ptr [rdi + 28], r11d
-    # eax = state[7], state[7] = temp2
-
-    lea rdx, [rip + ROUND_VALUES]
-    add eax, dword ptr [rdx + rcx * 4]
-    # eax = Wrap(state[7]) + Wrap(ROUND_VALUES[i])
-    add eax, dword ptr [rsi + rcx * 4]
-    # eax = Wrap(state[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i])
-
-    # let s1 = state[4].rotate_right(6) ^ state[4].rotate_right(11) ^ state[4].rotate_right(25)
-    mov r10d, dword ptr [rdi + 16]
-    # r10d = state[4]
-    rorx r9d, r10d, 6
-    # r9d = state[4].rotate_right(6)
-    rorx r8d, r10d, 11
-    xor r9d, r8d
-    # r9d = state[4].rotate_right(6) ^ state[4].rotate_right(11)
-    rorx r11d, r10d, 25
-    xor r9d, r11d
-    # r9d = s1 = state[4].rotate_right(6) ^ state[4].rotate_right(11) ^ state[4].rotate_right(25)
-    add eax, r9d
-    # eax = Wrap(state[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1)
-
-    # let ch = (state[4] & state[5]) ^ (!state[4] & state[6])
-    mov r9d, dword ptr [rdi + 20]
-    # r9d = state[5], r10d = state[4]
-    and r9d, r10d
-    # r9d = (state[4] & state[5])
-    mov r11d, dword ptr [rdi + 24]
-    # r11d = state[6], r10d = state[4]
-    andn r11d, r10d, r11d
-    # r11d = (!state[4] & state[6])
-    xor r9d, r11d
-    # r9d = ch = (state[4] & state[5]) ^ (!state[4] & state[6])
-    add eax, r9d
-    # eax = temp1 = Wrap(state[7]) + Wrap(ROUND_VALUES[i]) + Wrap(w[i]) + Wrap(s1) + Wrap(ch)
-
-    mov r15d, dword ptr [rdi + 28]
-    mov r14d, dword ptr [rdi + 24]
-    mov r13d, dword ptr [rdi + 20]
-    mov r12d, dword ptr [rdi + 16]
     mov r11d, dword ptr [rdi + 12]
-    mov r10d, dword ptr [rdi +  8]
-    mov r9d,  dword ptr [rdi +  4]
-    mov r8d,  dword ptr [rdi +  0]
+    mov r12d, dword ptr [rdi + 16]
+    mov r13d, dword ptr [rdi + 20]
+    mov r14d, dword ptr [rdi + 24]
+    mov r15d, dword ptr [rdi + 28]
+sha256_asm_bmi2_loop_start:
+    sha256_round r8d,  r9d,  r10d, r11d, r12d, r13d, r14d, r15d, 0
+    sha256_round r15d, r8d,  r9d,  r10d, r11d, r12d, r13d, r14d, 4
+    sha256_round r14d, r15d, r8d,  r9d,  r10d, r11d, r12d, r13d, 8
+    sha256_round r13d, r14d, r15d, r8d,  r9d,  r10d, r11d, r12d, 12
+    sha256_round r12d, r13d, r14d, r15d, r8d,  r9d,  r10d, r11d, 16
+    sha256_round r11d, r12d, r13d, r14d, r15d, r8d,  r9d,  r10d, 20
+    sha256_round r10d, r11d, r12d, r13d, r14d, r15d, r8d,  r9d,  24
+    sha256_round r9d,  r10d, r11d, r12d, r13d, r14d, r15d, r8d,  28
 
-    mov dword ptr [rdi + 28], r14d
-    mov dword ptr [rdi + 24], r13d
-    mov dword ptr [rdi + 20], r12d
-    mov dword ptr [rdi + 16], r11d
-    mov dword ptr [rdi + 12], r10d
-    mov dword ptr [rdi +  8], r9d
-    mov dword ptr [rdi +  4], r8d
-    mov dword ptr [rdi +  0], r15d
-
-    add dword ptr [rdi +  0], eax
-    add dword ptr [rdi + 16], eax
-
-    # state[7] = state[6]
-    # state[6] = state[5]
-    # state[5] = state[4]
-    # state[4] = (Wrap(state[3]) + temp1).0
-    # state[3] = state[2]
-    # state[2] = state[1]
-    # state[1] = state[0]
-    # state[0] = (temp1 + temp2).0
-
-    inc rcx
+    add rcx, 8
     cmp rcx, 64
     jne sha256_asm_bmi2_loop_start
+
+    mov dword ptr [rdi + 28], r15d
+    mov dword ptr [rdi + 24], r14d
+    mov dword ptr [rdi + 20], r13d
+    mov dword ptr [rdi + 16], r12d
+    mov dword ptr [rdi + 12], r11d
+    mov dword ptr [rdi + 8],  r10d
+    mov dword ptr [rdi + 4],  r9d
+    mov dword ptr [rdi + 0],  r8d
+
+    pop rbx
     pop r12
     pop r13
     pop r14
