@@ -37,22 +37,19 @@ fn main() {
     file_names
         .par_iter()
         .map(|file_name| {
-            let file = match File::open(file_name) {
-                Ok(file) => file,
-                Err(e) => return Err(e),
-            };
+            let file = File::open(file_name).map_err(|err| err.to_string())?;
 
             let mut ctx = SHA256Context::new(hash_implementation);
             let hash = ctx.hash_file(file);
 
             let mut hash_str = String::with_capacity(32 * 2);
             for byte in hash.iter() {
-                write!(hash_str, "{:02x}", byte);
+                write!(hash_str, "{:02x}", byte).map_err(|err| err.to_string())?;
             }
 
             Ok((hash_str, file_name))
         })
-        .for_each(|result| match result {
+        .for_each(|result: Result<_, String>| match result {
             Ok((hash_str, file_name)) => {
                 println!("{}  {}", hash_str, file_name);
             }
