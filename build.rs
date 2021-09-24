@@ -3,7 +3,7 @@ use std::process::Command;
 
 fn main() {
     // Rebuild if src/sha256_asm.s is changed.
-    println!("cargo:rerun-if-changed=src/sha256_asm.s");
+    println!("cargo:rerun-if-changed=src/sha256_{}.s", env::consts::ARCH);
 
     let out_dir = env::var("OUT_DIR").unwrap();
     if !(Command::new("gcc")
@@ -12,7 +12,7 @@ fn main() {
             "-fPIC",
             "-o",
             &(out_dir.clone() + "/libsha256_asm.a"),
-            "src/sha256_asm.s",
+            &format!("src/sha256_{}.s", env::consts::ARCH),
         ])
         .status()
         .unwrap()

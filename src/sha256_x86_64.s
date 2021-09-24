@@ -2,8 +2,8 @@
 
     .text
 
-.global sha256_asm
-sha256_asm:
+.global sha256_asm_avx2
+sha256_asm_avx2:
     # arguments - rdi = state: *mut u32, rsi = w: *const u32
     mov rcx, 0
     # rcx = i = 0
