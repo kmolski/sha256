@@ -2,7 +2,7 @@ use std::env;
 use std::process::Command;
 
 fn main() {
-    // Rebuild if src/sha256_asm.s is changed.
+    // Rebuild if src/sha256_X.s is changed.
     println!("cargo:rerun-if-changed=src/sha256_{}.s", env::consts::ARCH);
 
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -18,7 +18,7 @@ fn main() {
         .unwrap()
         .success())
     {
-        panic!("failed to build sha256_asm.s!");
+        panic!("failed to build sha256_{}.s!", env::consts::ARCH);
     }
 
     println!("cargo:rustc-link-search=native={}", out_dir);
