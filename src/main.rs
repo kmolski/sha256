@@ -18,7 +18,7 @@ fn main() {
             Arg::from_usage("[impl] -i --impl=[impl] 'implementation to use'")
                 .possible_values(&impls_names),
         )
-        .arg(Arg::from_usage("<INPUT> 'input files to hash'"))
+        .arg(Arg::from_usage("<INPUT>... 'input files to hash'"))
         .version("0.1.0");
 
     let matches = app.get_matches();
